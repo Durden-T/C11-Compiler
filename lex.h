@@ -71,10 +71,14 @@ private:
     size_t cur = 0;
     //词素和属性对应的表
     unordered_map<string, string> lexemes;
+
+    using lexeme = pair<string, string>;
     //统计各种类型词素的数量
-    map<string, int> typesCount;
+    map<string, vector<lexeme>*> types;
+    //分类保存,由types代理
+    vector<lexeme> id_, keyword_, number_, operator_, delimiter_;
     //保存所有错误
-    vector<pair<string,int>> errors;
+    vector<pair<string, int>> errors;
     //行数
     int linesCount;
     //字符数

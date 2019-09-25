@@ -262,13 +262,15 @@ void Lex::showResult()
     cout << "Errors : " << errors.size() << endl;
     for (auto& error : errors)
         cout << "Error:\"" << error.first << "\" in lines " << error.second << endl;
-
+    //种类集
+    const string CONSTTABLE[5] = { ID, KEYWORD, NUMBER, OPERATOR, DELIMITER };
     //输出统计信息
-    cout << "Lines : " << linesCount << endl << "Characters : " << charsCount << endl << "Identifiers : " << typesCount[ID] << endl;
-
-    cout << "Keywords : " << typesCount[KEYWORD] << endl << "Numbers : " << typesCount[NUMBER] << endl;
-
-    cout << "Operators : " << typesCount[OPERATOR] << endl << "Delimiters : " << typesCount[DELIMITER] << endl;
+    for (const string& type : CONSTTABLE)
+    {
+        cout << endl << type << " : " << types[type]->size() << endl << endl;
+        for (lexeme& l : *types[type])
+            cout << "{" << l.first << ',' << l.second << "}\n";
+    }
 }
 
 
@@ -292,15 +294,26 @@ void Lex::initTable()
     memset(delimiters, false, 128 * sizeof(bool));
     //设置界符转换
     delimiters['{'] = delimiters['}'] = delimiters['['] = delimiters[']'] = delimiters['('] = delimiters[')'] = delimiters['\\'] = delimiters['"'] = delimiters[';'] = true;
+
+    //初始化types的对应关系
+    types[ID] = &id_;
+    types[KEYWORD] = &keyword_;
+    types[NUMBER] = &number_;
+    types[OPERATOR] = &operator_;
+    types[DELIMITER] = &delimiter_;
 }
 
 inline void Lex::addLexeme(string& s, const string& type)
 {
     //若s第一次出现
     if (!lexemes.count(s))
+    {
         //若type为常数或标识符，则标志为常数或标识符，否则标志为该符号
-        lexemes[s] = (type == NUMBER || type == ID ? type : s);
-    ++typesCount[type];
+        string value = (type == NUMBER || type == ID ? type : s);
+        lexemes[s] = value;
+        types[type]->emplace_back(s, value);
+    }
+
 }
 
 char Lex::nextChar()
