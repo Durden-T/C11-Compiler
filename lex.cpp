@@ -8,6 +8,7 @@ unordered_set<string> Lex::keywords = { "auto", "break", "case", "char", "const"
 
 bool Lex::delimiters[128] = { false };
 
+const string Lex::CONSTTABLE[5] = { ID, KEYWORD, NUMBER, OPERATOR, DELIMITER };
 
 Lex::Lex(string& fileName) : f(fileName)
 {
@@ -51,7 +52,10 @@ void Lex::run()
             if (isspace(c))
             {
                 if (c == '\n')
+                {
                     ++linesCount;
+                    line.clear();
+                }
                 continue;
             }
             else
@@ -224,7 +228,7 @@ void Lex::run()
             state = 0;
             break;
 
-            //处理例如> >> >= >>= 等一系列最长长度为3的运算符 部分
+            //处理例如> >> >= >>= 等一系列最长长度为3的运算符
         case 14:
             if (c == word[0])
                 state = 15;
@@ -237,7 +241,7 @@ void Lex::run()
             }
             break;
 
-            //处理例如> >> >= >>= 等一系列最长长度为3的运算符 部分
+            //处理例如> >> >= >>= 等一系列最长长度为3的运算符
         case 15:
             if (c != '=')
                 rollback();
@@ -260,14 +264,14 @@ void Lex::showResult()
 {
     //输出错误
     cout << "Errors : " << errors.size() << endl;
-    for (auto& error : errors)
-        cout << "Error:\"" << error.first << "\" in lines " << error.second << endl;
-    //种类集
-    const string CONSTTABLE[5] = { ID, KEYWORD, NUMBER, OPERATOR, DELIMITER };
+    for (Error& error : errors)
+        cout << "Error:\"" << error.word << "\" in lines " << error.lineNumber << " : " << error.line << endl;
+
     //输出统计信息
+    cout << "\nLines : " << linesCount << endl << "Characters : " << charsCount;
     for (const string& type : CONSTTABLE)
     {
-        cout << endl << type << " : " << types[type]->size() << endl << endl;
+        cout << endl << type << " : " << types[type]->size() << endl;
         for (lexeme& l : *types[type])
             cout << "{" << l.first << ',' << l.second << "}\n";
     }
@@ -340,6 +344,7 @@ char Lex::nextChar()
         ++charsCount;
     //将此字符添加到word中
     word += buffer[cur];
+    line += buffer[cur];
     return buffer[cur++];
 }
 
@@ -356,16 +361,26 @@ void Lex::rollback()
         --charsCount;
     //从word中删除当前字符
     word.pop_back();
+    line.pop_back();
 }
 
 void Lex::handleError(char c)
 {
     rollback();
-    errors.emplace_back(word, linesCount);
+
+    Error t;
+    t.word = word;
+    t.lineNumber = linesCount;
+
     //不停读入下个字符直到遇到空白字符/界符/结束符
-    while (!canSkip(c))
+    do
+    {
         c = nextChar();
+    } while (!canSkip(c));
+
+    t.line = line;
     //将t添加到errors中
+    errors.emplace_back(t);
 }
 
 inline bool Lex::canSkip(char c)
