@@ -1,16 +1,6 @@
 #include"lex.h"
 
-
-//初始化部分表
-int Lex::stateTable[128] = { ERROR };
-
-unordered_set<string> Lex::keywords = { "auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long", "register", "restrict", "return", "short", "signed", "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "_Bool" };
-
-bool Lex::delimiters[128] = { false };
-
-const string Lex::CONSTTABLE[5] = { ID, KEYWORD, NUMBER, OPERATOR, DELIMITER };
-
-Lex::Lex(string& fileName) : f(fileName)
+Lex::Lex(string& fileName, Tables& _table) : f(fileName), tables(_table)
 {
     //打开文件出错
     if (!f)
@@ -22,7 +12,7 @@ Lex::Lex(string& fileName) : f(fileName)
     f.read(buffer, BUFSIZE);
     linesCount = (buffer[0] == END ? 0 : 1);
     buffer[BUFSIZE] = buffer[2 * BUFSIZE + 1] = END;
-    initTable();
+    initTypes();
 }
 
 Lex::~Lex()
@@ -63,13 +53,13 @@ void Lex::run()
                 //清空word
                 word.clear();
                 word += c;
-                if (delimiters[c])
+                if (tables.isDelimiter(c))
                     addLexeme(word, DELIMITER);
                 else if (c == END)
                     end = true;
                 //根据状态表转换
                 else
-                    state = stateTable[c];
+                    state = tables.switchState(c);
             }
             break;
 
@@ -79,7 +69,7 @@ void Lex::run()
             {
                 rollback();
                 string ans;
-                if (keywords.count(word))
+                if (tables.isKeyword(word))
                     ans = KEYWORD;
                 //处理sizeof运算符
                 else if (word == SIZEOF)
@@ -249,6 +239,30 @@ void Lex::run()
             state = 0;
             break;
 
+            //处理字符/字符串常量
+        case 16:
+            if (c == '\n')
+            {
+                ++linesCount;
+                rollback();
+                state = ERROR;
+            }
+            else if (c == END)
+                state = ERROR;
+            //当前字符为'或"，且未被转义
+            else if (c == word[0] && word[word.size() - 2] != ESCAPE)
+            {
+                //当目前单词为字符常量时，需判断单引号内是一个字符，即'\n'长度为3
+                if (word[0] == '\'' && word.size() != 3)
+                    state = ERROR;
+                else
+                {
+                    addLexeme(word, STRING);
+                    state = 0;
+                }
+            }
+            break;
+
             //错误状态
         default:
             if (c == END)
@@ -265,7 +279,7 @@ void Lex::showResult()
     //输出错误
     cout << "Errors : " << errors.size() << endl;
     for (Error& error : errors)
-        cout << "Error:\"" << error.word << "\" in lines " << error.lineNumber << " : " << error.line << endl;
+        cout << "Error: " << error.word << " in lines " << error.lineNumber << " : " << error.line << endl;
 
     //输出统计信息
     cout << "\nLines : " << linesCount << endl << "Characters : " << charsCount;
@@ -277,32 +291,12 @@ void Lex::showResult()
     }
 }
 
-
-void Lex::initTable()
+void Lex::initTypes()
 {
-    //清空stateTable表
-    memset(stateTable, ERROR, 128 * sizeof(int));
-    //设置字母转换
-    for (char c = 'a'; c != 'z'; ++c)
-        stateTable[c] = stateTable[c + 'A' - 'a'] = 1;
-    //设置数字转换
-    for (char i = '0'; i <= '9'; ++i)
-        stateTable[i] = 2;
-    //设置运算符转换
-    stateTable['/'] = 8;
-    stateTable['*'] = stateTable['\\'] = stateTable['='] = stateTable['!'] = stateTable['^'] = stateTable['%'] = 12;
-    stateTable['+'] = stateTable['-'] = stateTable['|'] = stateTable['&'] = 13;
-    stateTable['>'] = stateTable['<'] = 14;
-
-    //清空界符表
-    memset(delimiters, false, 128 * sizeof(bool));
-    //设置界符转换
-    delimiters['{'] = delimiters['}'] = delimiters['['] = delimiters[']'] = delimiters['('] = delimiters[')'] = delimiters['\\'] = delimiters['"'] = delimiters[';'] = true;
-
-    //初始化types的对应关系
     types[ID] = &id_;
     types[KEYWORD] = &keyword_;
     types[NUMBER] = &number_;
+    types[STRING] = &string_;
     types[OPERATOR] = &operator_;
     types[DELIMITER] = &delimiter_;
 }
@@ -313,11 +307,10 @@ inline void Lex::addLexeme(string& s, const string& type)
     if (!lexemes.count(s))
     {
         //若type为常数或标识符，则标志为常数或标识符，否则标志为该符号
-        string value = (type == NUMBER || type == ID ? type : s);
+        string value = (type == NUMBER || type == STRING || type == ID ? type : s);
         lexemes[s] = value;
         types[type]->emplace_back(s, value);
     }
-
 }
 
 char Lex::nextChar()
@@ -385,5 +378,5 @@ void Lex::handleError(char c)
 
 inline bool Lex::canSkip(char c)
 {
-    return isspace(c) || delimiters[c] || c == END;
+    return isspace(c) || tables.isDelimiter(c) || c == END;
 }
